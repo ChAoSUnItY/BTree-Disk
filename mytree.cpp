@@ -170,7 +170,7 @@ bool BtreePageMgr::get_header(header_data &header) {
 template <class btree_node>
 void BtreePageMgr::save_node(const long &n, btree_node &node) {
     if (node.header.is_leaf) {
-        this->seekp(n, ios::beg);
+        this->seekp(n * node.header., ios::beg);
     } else {
 
     }
