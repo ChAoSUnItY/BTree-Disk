@@ -1,0 +1,18 @@
+{
+    "files.associations": {
+        "iostream": "cpp",
+        "xstring": "cpp",
+        "regex": "cpp",
+        "ostream": "cpp",
+        "chrono": "cpp",
+        "stdexcept": "cpp",
+        "new": "cpp",
+        "filesystem": "cpp",
+        "system_error": "cpp",
+        "xlocale": "cpp",
+        "tuple": "cpp",
+        "map": "cpp",
+        "memory": "cpp",
+        "sstream": "cpp"
+    }
+}
