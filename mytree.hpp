@@ -49,11 +49,16 @@ public:
 
     void create_primary_index(const string& pk);
     void create_index(const string& index_name);
+    void insert_data(const json& json);
 
     private:
         string pk;
         map<string, BTree*> IndexMap;
         shared_ptr <DataPageMgr> data_page_mgr;
+
+        struct MetaData {
+            long count{0};
+        } data_header;
 };
 
 class TableOption {
@@ -142,10 +147,10 @@ class BtreePageMgr : protected fstream {
         bool get_header(header_data &header);
 
         template <class btree_node>
-        void save_node(const long &n, btree_node &node);
+        void save_node(const long &n, btree_node &node, TableOption *option);
 
         template <class btree_node>
-        bool get_node(const long &n, btree_node &node);
+        bool get_node(const long &n, btree_node &node, TableOption *option);
 
     private:
         bool empty;

@@ -108,6 +108,46 @@ void Table::create_primary_index(const string& pk) {
     this->IndexMap[pk] = new BTree(pk, degree, 0, this->data_page_mgr, this->option);
 }
 
+void Table::insert_data(const json& json_data) {
+    this->data_header.count++;
+    this->data_page_mgr->save_header(this->data_header);
+    this->data_page_mgr->save_node(this->data_header.count - 1, json_data, this->option->field_info);
+
+    if (this->pk == DEFAULT_PK) {
+        json_data[this->pk] = this->data_header.count;
+    }
+
+    int pk = json_data[this->pk];
+
+    this->data_header.count++;
+    this->data_page_mgr->save_header(this->data_header);
+    this->data_page_mgr->save_node(this->data_header.count-1, json_data, this->option->field_info);
+
+    for (auto &elem : json_data.items()) { /// todo 萬一出現 exception, data_header 要有 rollback 機制
+        string json_key = elem.key();
+
+        if (json_key == this->pk) {
+            struct BtreeKey btree_key{ NULL, pk };
+            this->IndexMap[this->pk]->insert_key(btree_key, this->data_header.count-1);
+        }
+        else if (this->IndexMap.find(json_key) != this->IndexMap.end()) {
+            struct BtreeKey btree_key{ NULL, pk };
+            string json_value = elem.value().get<string>();
+
+            int field_size;
+            for (auto& item : this->option->field_info) {
+                if (json_key == get<0>(item)) {
+                    field_size = get<2>(item);
+                }
+            }
+
+            btree_key.data = new char[field_size]();
+            strncpy(btree_key.data, json_value.c_str(), field_size);
+            this->IndexMap[json_key]->insert_key(btree_key, this->data_header.count-1);
+        }
+    }
+}
+
 BTree::BTree(const string& index_name, int degree, int key_field_len, shared_ptr <DataPageMgr> data_page_mgr, TableOption* table_option) {
     this->table_option = table_option;
     this->header.degree = degree;
@@ -168,17 +208,38 @@ bool BtreePageMgr::get_header(header_data &header) {
 }
 
 template <class btree_node>
-void BtreePageMgr::save_node(const long &n, btree_node &node) {
-    if (node.header.is_leaf) {
-        this->seekp(n * node.header., ios::beg);
-    } else {
+void BtreePageMgr::save_node(const long &n, btree_node &node, TableOption *option) {
+    this->clear();
+    this->seekp(this->header_prefix + n * option->page_size, ios::beg);
+    this->write(reinterpret_cast<char *>(node.header), sizeof(node.header));
 
+    for (int i = 0; i < node.header.key_count; i++) {
+        this->write(reinterpret_cast<char *>(node.children[i]), sizeof(long));
+        this->write(reinterpret_cast<char *>(node.keys[i]._id), sizeof(int));
+        this->write(reinterpret_cast<char *>(node.keys[i].data), node.header.key_field_len * sizeof(char));
     }
 }
 
 template <class btree_node>
-bool BtreePageMgr::get_node(const long &n, btree_node &node) {
-    return false;
+bool BtreePageMgr::get_node(const long &n, btree_node &node, TableOption *option) {
+    this->clear();
+    this->seekp(this->header_prefix + n * option->page_size, ios::beg);
+    this->read(reinterpret_cast<char *>(&node.header), sizeof(node.header));
+
+    for (int i = 0; i < node.header.key_count; i++) {
+        long child;
+        this->read(reinterpret_cast<char *>(&child), sizeof(long));
+        node.children.push_back(child);
+        struct BtreeKey key{
+            id{0},
+            data{malloc(node.header.key_field_len)}
+        };
+        this->read(reinterpret_cast<char *>(&key._id), sizeof(int));
+        this->read(reinterpret_cast<char *>(&data), node.header.key_field_len * sizeof(char));
+        node.keys.push_back(key);
+    }
+
+    return this->gcount() > 0;
 }
 
 template <class header_data>
@@ -194,6 +255,66 @@ bool DataPageMgr::get_header(header_data &header) {
     this->clear();
     this->seekg(0, ios::beg);
     this->read(reinterpret_cast<char *>(&header), sizeof(header));
+    return this->gcount() > 0;
+}
+
+void DataPageMgr::save_node(const long &n, const json &node, vector<FieldTypeInfo> &field_info) {
+    this->clear();
+    int total_size = 0, acc_size = 0;
+
+    for (auto &type_info : field_info) {
+        total_size += std::get<2>(type_info);
+    }
+
+    this->seekp(this->header_prefix + n * total_size, ios::beg);
+
+    char *data = new char[total_size]();
+
+    for (auto &type_info : field_info) {
+        std::string type_name = std::get<0>(type_info);
+        std::string type_type = std::get<1>(type_info);
+        int type_size = std::get<2>(type_info);
+
+        if (type_type == "int") {
+            strncpy(data + acc_size, reinterpret_cast<char *>(node[type_name].get<int>()), type_size);
+        } else if (type_type == "char") {
+            strncpy(data + acc_size, node[type_name].get<std::string>().c_str(), type_size);
+        }
+
+        acc_size += type_size;
+    }
+
+    this->write(data, total_size);
+    delete [] data;
+}
+
+bool DataPageMgr::get_node(const long &n, json &node, vector<FieldTypeInfo> &field_info) {
+    this->clear();
+    int total_size = 0;
+
+    for (auto &type_info : field_info) {
+        total_size += std::get<2>(type_info);
+    }
+
+    this->seekp(this->header_prefix + n * total_size, ios::beg);
+
+    for (auto &type_info : field_info) {
+        std::string type_name = std::get<0>(type_info);
+        std::string type_type = std::get<1>(type_info);
+        int type_size = std::get<2>(type_info);
+
+        if (type_type == "int") {
+            int data = 0;
+            this->read(reinterpret_cast<char *>(&data), type_size);
+            node[type_name] = data;
+        } else if (type_type == "char") {
+            char *data = new char[type_size]();
+            this->read(reinterpret_cast<char *>(&data), type_size);
+            node[type_name] = string(data);
+            delete [] data;
+        }
+    }
+
     return this->gcount() > 0;
 }
 

@@ -34,7 +34,28 @@ void DataBase::setIndex(const smatch& match) {
 }
 
 void DataBase::insert(const smatch& match) {
+    string file_name = match[2].str();
+    fs::path file_path(file_name.c_str());
 
+    if (!fs::exists(file_path)) {
+        throw runtime_error(fmt::format("File {} does not exist", file_name));
+    }
+
+    ifstream data_file(file_name);
+
+    if (!data_file.is_open()) {
+        throw runtime_error(fmt::format("Cannot open file {}", file_name));
+    }
+
+    string line;
+    while (getline(data_file, line)) {
+        try {
+            json line_json = json::parse(line);
+            this->current_table->insert_data(line);
+        } catch (exception &e) {
+            cout << exception.what() << endl;
+        }
+    }
 }
 
 /*json*/void DataBase::query(const smatch& match) {
