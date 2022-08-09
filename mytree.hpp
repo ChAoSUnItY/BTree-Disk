@@ -107,11 +107,16 @@ class BTree {
         queue<BTreeNode*> node_buffer;
         map<long, BTreeNode*> NodeMap;
         BTreeNode* root;
+
+        void insert_key(struct BtreeKey& key, long pos);
+        int compare_key(const struct BtreeKey& key1, const struct BtreeKey& key2);
+        void split_child(BTreeNode* to_split, vector<pair<long, int>>& traversal_record);
 };
 
 class BTreeNode {
     public:
         BTreeNode(long id, int degree, int key_field_len, bool is_root, bool is_leaf);
+        BTreeNode();
         ~BTreeNode();
 
         struct meta_data {
@@ -126,8 +131,11 @@ class BTreeNode {
 
         //BtreeKey key[2*degree-1];
         //long children[2*degree];
-        vector<BtreeKey> keys;
+        vector<struct BtreeKey> keys;
         vector<long> children;
+
+        bool is_full();
+        struct BtreeKey key_copy(size_t index);
 };
 
 struct BtreeKey {

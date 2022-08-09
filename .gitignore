@@ -1,3 +1,5 @@
 Build
 .cache
 dependencies
+.idea
+cmake-build-debug
