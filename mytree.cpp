@@ -283,6 +283,11 @@ void BTree::split_child(BTreeNode *to_split, vector<pair<long, int>> &traversal_
             to_split->keys.resize(to_split->header.key_count / 2);
             to_split->children.resize(to_split->header.key_count / 2);
             to_split->header.key_count /= 2;
+
+            this->btree_page_mgr->save_header(this->header);
+            this->btree_page_mgr->save_node(to_split->header.traversal_id, *to_split, this->table_option);
+            this->btree_page_mgr->save_node(new_root->header.traversal_id, *new_root, this->table_option);
+            this->btree_page_mgr->save_node(right->header.traversal_id, *right, this->table_option);
         } else {
 
         }
@@ -338,7 +343,7 @@ template<class btree_node>
 void BtreePageMgr::save_node(const long &n, btree_node &node, TableOption *option) {
     this->clear();
     this->seekp(this->header_prefix + n * option->page_size, ios::beg);
-    this->write(reinterpret_cast<char *>(node.header), sizeof(node.header));
+    this->write(reinterpret_cast<char *>(&(node.header)), sizeof(node.header));
 
     for (int i = 0; i < node.header.key_count; i++) {
         this->write(reinterpret_cast<char *>(node.children[i]), sizeof(long));
@@ -358,11 +363,11 @@ bool BtreePageMgr::get_node(const long &n, btree_node &node, TableOption *option
         this->read(reinterpret_cast<char *>(&child), sizeof(long));
         node.children.push_back(child);
         struct BtreeKey key{
-                id{0},
-                data{malloc(node.header.key_field_len)}
+                data{malloc(node.header.key_field_len)},
+                _id{0}
         };
         this->read(reinterpret_cast<char *>(&key._id), sizeof(int));
-        this->read(reinterpret_cast<char *>(&data), node.header.key_field_len * sizeof(char));
+        this->read(reinterpret_cast<char *>(&key.data), node.header.key_field_len * sizeof(char));
         node.keys.push_back(key);
     }
 
