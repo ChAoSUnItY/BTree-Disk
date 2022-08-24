@@ -18,18 +18,30 @@ using json = nlohmann::json;
 using namespace fmt;
 using namespace std;
 
-#define MAX_LENGTH 10000
-#define DEFAULT_LENGTH 16
-#define DEFAULT_RANGE 1000
-#define DEFAULT_DEGREE 2
-
-void test() {
+void test1() {
     db = new DataBase();
     db->init();
 
-    parseCommand("create table test");
-    parseCommand("use table test");
-    parseCommand("insert C:\\Users\\chaos\\projects\\BTree-Disk\\test_case\\test1.json");
+    parseCommand(string("delete table test"));
+    parseCommand(string("create table test"));
+    parseCommand(string("use table test"));
+    parseCommand(string("insert ../test_case/test1.json"));
+    //parseCommand(string("create index example_id"));
+    //parseCommand(string("create index example_str"));
+    parseCommand(string("clear_b table test"));
+
+    json btree_node_json;
+    btree_node_json = db->get_btree_node_info("test", "_id", 0);
+    btree_node_json = db->get_btree_node_info("test", "_id", 1);
+    btree_node_json = db->get_btree_node_info("test", "_id", 2);
+
+    btree_node_json = db->get_btree_node_info("test", "example_str", 0);
+    btree_node_json = db->get_btree_node_info("test", "example_str", 1);
+    btree_node_json = db->get_btree_node_info("test", "example_str", 2);
+
+    btree_node_json = db->get_btree_node_info("test", "example_id", 0);
+    btree_node_json = db->get_btree_node_info("test", "example_id", 1);
+    btree_node_json = db->get_btree_node_info("test", "example_id", 2);
 
     delete db;
 }
@@ -37,12 +49,19 @@ void test() {
 void test2() {
     db = new DataBase();
     db->init();
+
+    parseCommand(string("delete table test2"));
+    parseCommand(string("create table test2"));
+    parseCommand(string("use table test2"));
+    parseCommand(string("create index example_id"));
+    parseCommand(string("create index example_str"));
+    parseCommand(string("insert ../test_case/test2.json"));
+    parseCommand(string("clear_b table test2"));
+
     delete db;
 }
 
-int main(int argc, char *argv[])
-{
-    test();
-
-    return 0;
+int main(int argc, char **argv) {
+    test1();
+    // test2();
 }

@@ -26,6 +26,9 @@ public:
 
     void createTable(const smatch& match);
     void useTable(const smatch& match);
+    void clearbTable(const smatch& match);
+    void deleteTable(const smatch& match);
+    json get_btree_node_info(const string& table_name, const string& index_name, const long& n);
     void setIndex(const smatch& match);
     void insert(const smatch& match);
     /*json*/void query(const smatch& match);

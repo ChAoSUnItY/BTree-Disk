@@ -51,6 +51,13 @@ public:
     void create_primary_index(const string& pk);
     void create_index(const string& index_name);
     void insert_data(json& json);
+    BTree* get_index(const string& index) {
+        if (this->IndexMap.contains(index)) {
+            return this->IndexMap[index];
+        } else {
+            return nullptr;
+        }
+    };
 
     private:
         string pk;
@@ -90,13 +97,13 @@ class Buffer {
 };
 
 enum class FieldType {
-    CHAR,
-    INTEGER
+    INTEGER = 0,
+    CHAR = 1
 };
 
 class BTree {
     public:
-        BTree(const string& index_name, int degree, int key_field_len, shared_ptr <DataPageMgr> data_page_mgr, TableOption* table_option);
+        BTree(const string& index_name, int degree, FieldType type, int key_field_len, shared_ptr <DataPageMgr> data_page_mgr, TableOption* table_option);
         BTree(const string& index_name, shared_ptr <DataPageMgr> data_page_mgr, TableOption* table_option);
         ~BTree();
         TableOption* table_option;

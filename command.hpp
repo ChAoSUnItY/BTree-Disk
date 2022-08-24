@@ -8,7 +8,7 @@
 #include <string>
 #include <regex>
 
-extern const std::regex regexes[7];
+extern const std::regex regexes[9];
 
 void parseCommand(std::string input);
 

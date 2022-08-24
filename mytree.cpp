@@ -50,6 +50,8 @@ Table::Table(const string &name, const string &fieldInfo) {
     if (!fs::is_directory(tableFolder))
         fs::create_directory(tableFolder);
 
+    this->data_page_mgr = std::make_shared<DataPageMgr>(fmt::format("./database/{}/table_data.bin", name));
+
     json metaInfo;
 
     this->create_primary_index(DEFAULT_PK);
@@ -91,7 +93,7 @@ Table::Table(const string &name) {
     for (auto &[key, value]: fieldInfo.items()) {
         string type = value["type"].get<string>();
         int size = value["type"].get<int>();
-        this->option->field_info.push_back(FieldTypeInfo(key, type, size));
+        this->option->field_info.emplace_back(key, type, size);
     }
 
     this->pk = metaInfo["pk"];
@@ -106,7 +108,7 @@ Table::Table(const string &name) {
 void Table::create_primary_index(const string &pk) {
     this->pk = pk;
     int degree = (DEFAULT_PAGE_SIZE - 100) / (sizeof(int) + sizeof(long)) / 2;
-    this->IndexMap[pk] = new BTree(pk, degree, 0, this->data_page_mgr, this->option);
+    this->IndexMap[pk] = new BTree(pk, degree, FieldType::INTEGER, 0, this->data_page_mgr, this->option);
 }
 
 void Table::insert_data(json &json_data) {
@@ -148,15 +150,90 @@ void Table::insert_data(json &json_data) {
     }
 }
 
-BTree::BTree(const string &index_name, int degree, int key_field_len, shared_ptr<DataPageMgr> data_page_mgr,
+void Table::create_index(const string &index_name) {
+    if (this->IndexMap.contains(index_name)) {
+        throw runtime_error(
+                fmt::format("Current table {} already contains index {}", this->option->table_name, index_name));
+    }
+
+    bool create_new_index = false;
+    int key_data_size;
+    string key_data_type;
+    for (auto &item: this->option->field_info) {
+        string field_name = std::get<0>(item);
+        string field_type = std::get<1>(item);
+        int field_size = std::get<2>(item);
+
+        if (index_name == field_name) {
+            int key_field_len = field_size;
+            key_data_size = field_size;
+            key_data_type = field_type;
+            FieldType key_field_type;
+
+            if (field_type == "int") {
+                key_field_type = FieldType::INTEGER;
+            } else if (field_type == "char") {
+                key_field_type = FieldType::CHAR;
+            }
+
+            int degree = (DEFAULT_PAGE_SIZE - 100) / (sizeof(int) + key_field_len + sizeof(long)) / 2;
+            this->IndexMap[index_name] = new BTree(index_name, degree, key_field_type, key_field_len,
+                                                   this->data_page_mgr, this->option);
+            create_new_index = true;
+            break;
+        }
+    }
+
+    if (!create_new_index) {
+        throw runtime_error(fmt::format("index {} does not match", index_name));
+    }
+
+    for (long i = 0; i < this->data_header.count; ++i) {
+        json json_data;
+        this->data_page_mgr->get_node(i, json_data, this->option->field_info);
+
+//        if (!json_data["exist"]) {
+//            continue;
+//        }
+//
+//        json_data.erase("exist");
+
+        struct BtreeKey btree_key{nullptr, i};
+
+        btree_key.data = new char[key_data_size]();
+        if (key_data_type == "int") {
+            int json_raw_value = json_data[index_name].get<int>();
+            strncpy(btree_key.data, reinterpret_cast<char *>(&json_raw_value), key_data_size);
+        } else if (key_data_type == "char") {
+            string json_raw_value = json_data[index_name].get<string>();
+            strncpy(btree_key.data, json_raw_value.c_str(), key_data_size);
+        }
+        this->IndexMap[index_name]->insert_key(btree_key, i);
+    }
+}
+
+BTree::BTree(const string &index_name, int degree, FieldType type, int key_field_len,
+             shared_ptr<DataPageMgr> data_page_mgr,
              TableOption *table_option) {
     this->table_option = table_option;
+    this->header.fieldType = type;
     this->header.degree = degree;
     this->header.key_field_len = key_field_len;
     this->index_name = index_name;
 
     this->root = new BTreeNode(0, degree, key_field_len, true, true);
     this->header.count++;
+
+    if (index_name == "_id") {
+        this->header.is_pk = true;
+    }
+
+    std::filesystem::path folder_path = fmt::format("./database/{}/{}_index", this->table_option->table_name,
+                                                    this->index_name);
+
+    if (!is_directory(folder_path)) {
+        create_directories(folder_path);
+    }
 
     this->btree_page_mgr = std::make_shared<BtreePageMgr>(
             fmt::format("./database/{}/{}_index/btree_file", this->table_option->table_name, this->index_name));
@@ -243,11 +320,11 @@ void BTree::insert_key(struct BtreeKey &key, long pos) {
 int BTree::compare_key(const struct BtreeKey &key1, const struct BtreeKey &key2) {
     switch (this->header.fieldType) {
         case FieldType::CHAR: {
-            int id1 = key1._id, id2 = key2._id, cmp = strncmp(key1.data, key2.data, 1);
+            int id1 = key1._id, id2 = key2._id, cmp = this->header.is_pk ? 0 : strncmp(key1.data, key2.data, 1);
 
             if (cmp != 0) {
                 return cmp;
-            }  else {
+            } else {
                 if (id1 > id2) {
                     return 1;
                 } else if (id1 < id2) {
@@ -259,8 +336,12 @@ int BTree::compare_key(const struct BtreeKey &key1, const struct BtreeKey &key2)
         }
         case FieldType::INTEGER: {
             int k1, k2, id1 = key1._id, id2 = key2._id;
-            strncpy(reinterpret_cast<char *>(&k1), key1.data, 4);
-            strncpy(reinterpret_cast<char *>(&k2), key2.data, 4);
+            if (this->header.is_pk) {
+                k1 = k2 = 0;
+            } else {
+                strncpy(reinterpret_cast<char *>(&k1), key1.data, 4);
+                strncpy(reinterpret_cast<char *>(&k2), key2.data, 4);
+            }
 
             if (k1 > k2) {
                 return 1;
@@ -338,7 +419,8 @@ void BTree::split_child(BTreeNode *to_split, vector<pair<long, int>> &traversal_
 
             auto parent_node = this->NodeMap[pair.first];
 
-            parent_node->keys.insert(parent_node->keys.begin() + pair.second, to_split->key_copy(to_split->header.key_count / 2 - 1));
+            parent_node->keys.insert(parent_node->keys.begin() + pair.second,
+                                     to_split->key_copy(to_split->header.key_count / 2 - 1));
             parent_node->children.insert(parent_node->children.begin() + pair.second, to_split->header.traversal_id);
             parent_node->children[pair.second + 1] = right->header.traversal_id;
 
@@ -485,7 +567,8 @@ void DataPageMgr::save_node(const long &n, const json &node, vector<FieldTypeInf
         int type_size = std::get<2>(type_info);
 
         if (type_type == "int") {
-            strncpy(data + acc_size, reinterpret_cast<char *>(node[type_name].get<int>()), type_size);
+            int read_data = node[type_name].get<int>();
+            strncpy(data + acc_size, reinterpret_cast<char *>(&read_data), type_size);
         } else if (type_type == "char") {
             strncpy(data + acc_size, node[type_name].get<std::string>().c_str(), type_size);
         }
