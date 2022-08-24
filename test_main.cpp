@@ -1,4 +1,3 @@
-
 #include "myrandom.hpp"
 #include "mytree.hpp"
 #include "command.hpp"
@@ -24,22 +23,26 @@ using namespace std;
 #define DEFAULT_RANGE 1000
 #define DEFAULT_DEGREE 2
 
-int main(int argc, char *argv[])
-{
+void test() {
     db = new DataBase();
     db->init();
-    string input;
-    while (true)
-    {
-        cout << "db >";
-        getline(cin, input);
 
-        if (input.size() == 0)
-            continue;
-
-        parseCommand(input);
-    }
+    parseCommand("create table test");
+    parseCommand("use table test");
+    parseCommand("insert C:\\Users\\chaos\\projects\\BTree-Disk\\test_case\\test1.json");
 
     delete db;
+}
+
+void test2() {
+    db = new DataBase();
+    db->init();
+    delete db;
+}
+
+int main(int argc, char *argv[])
+{
+    test();
+
     return 0;
 }

@@ -35,6 +35,7 @@ class TableOption;
 class DbSystem;
 class BtreePageMgr;
 class DataPageMgr;
+enum class FieldType;
 class BTree;
 class BTreeNode;
 struct BtreeKey;
@@ -49,7 +50,7 @@ public:
 
     void create_primary_index(const string& pk);
     void create_index(const string& index_name);
-    void insert_data(const json& json);
+    void insert_data(json& json);
 
     private:
         string pk;
@@ -88,6 +89,11 @@ class Buffer {
 
 };
 
+enum class FieldType {
+    CHAR,
+    INTEGER
+};
+
 class BTree {
     public:
         BTree(const string& index_name, int degree, int key_field_len, shared_ptr <DataPageMgr> data_page_mgr, TableOption* table_option);
@@ -95,6 +101,7 @@ class BTree {
         ~BTree();
         TableOption* table_option;
         struct meta_data {
+            FieldType fieldType;
             bool is_pk{false};
             long count{0};
             long root_id{0};

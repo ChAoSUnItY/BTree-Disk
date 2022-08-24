@@ -109,7 +109,7 @@ void Table::create_primary_index(const string &pk) {
     this->IndexMap[pk] = new BTree(pk, degree, 0, this->data_page_mgr, this->option);
 }
 
-void Table::insert_data(const json &json_data) {
+void Table::insert_data(json &json_data) {
     this->data_header.count++;
     this->data_page_mgr->save_header(this->data_header);
     this->data_page_mgr->save_node(this->data_header.count - 1, json_data, this->option->field_info);
@@ -161,7 +161,7 @@ BTree::BTree(const string &index_name, int degree, int key_field_len, shared_ptr
     this->btree_page_mgr = std::make_shared<BtreePageMgr>(
             fmt::format("./database/{}/{}_index/btree_file", this->table_option->table_name, this->index_name));
     this->btree_page_mgr->save_header(this->header);
-    this->btree_page_mgr->save_node(0, *this->root);
+    this->btree_page_mgr->save_node(0, *this->root, this->table_option);
 }
 
 BTree::BTree(const string &index_name, shared_ptr<DataPageMgr> data_page_mgr, TableOption *table_option) {
@@ -170,7 +170,7 @@ BTree::BTree(const string &index_name, shared_ptr<DataPageMgr> data_page_mgr, Ta
     this->btree_page_mgr = std::make_shared<BtreePageMgr>(
             fmt::format("./database/{}/{}_index/btree_file", this->table_option->table_name, this->index_name));
     this->btree_page_mgr->get_header(this->header);
-    this->btree_page_mgr->get_node(this->header.root_id, this->root);
+    this->btree_page_mgr->get_node(this->header.root_id, *this->root, this->table_option);
 }
 
 void BTree::insert_key(struct BtreeKey &key, long pos) {
@@ -241,7 +241,42 @@ void BTree::insert_key(struct BtreeKey &key, long pos) {
 }
 
 int BTree::compare_key(const struct BtreeKey &key1, const struct BtreeKey &key2) {
+    switch (this->header.fieldType) {
+        case FieldType::CHAR: {
+            int id1 = key1._id, id2 = key2._id, cmp = strncmp(key1.data, key2.data, 1);
 
+            if (cmp != 0) {
+                return cmp;
+            }  else {
+                if (id1 > id2) {
+                    return 1;
+                } else if (id1 < id2) {
+                    return -1;
+                } else {
+                    return 0;
+                }
+            }
+        }
+        case FieldType::INTEGER: {
+            int k1, k2, id1 = key1._id, id2 = key2._id;
+            strncpy(reinterpret_cast<char *>(&k1), key1.data, 4);
+            strncpy(reinterpret_cast<char *>(&k2), key2.data, 4);
+
+            if (k1 > k2) {
+                return 1;
+            } else if (k1 < k2) {
+                return -1;
+            } else {
+                if (id1 > id2) {
+                    return 1;
+                } else if (id1 < id2) {
+                    return -1;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
 }
 
 void BTree::split_child(BTreeNode *to_split, vector<pair<long, int>> &traversal_record) {
@@ -289,8 +324,39 @@ void BTree::split_child(BTreeNode *to_split, vector<pair<long, int>> &traversal_
             this->btree_page_mgr->save_node(new_root->header.traversal_id, *new_root, this->table_option);
             this->btree_page_mgr->save_node(right->header.traversal_id, *right, this->table_option);
         } else {
+            auto right_keys_iter = to_split->keys.begin() + to_split->header.key_count / 2;
+            auto right_children_iter = to_split->children.begin() + to_split->header.key_count / 2;
 
+            for (; right_keys_iter != to_split->keys.end(); right_keys_iter++) {
+                right->keys.emplace_back(*right_keys_iter);
+                right->children.emplace_back(*right_children_iter);
+            }
+
+            auto pair = traversal_record.back();
+
+            traversal_record.pop_back();
+
+            auto parent_node = this->NodeMap[pair.first];
+
+            parent_node->keys.insert(parent_node->keys.begin() + pair.second, to_split->key_copy(to_split->header.key_count / 2 - 1));
+            parent_node->children.insert(parent_node->children.begin() + pair.second, to_split->header.traversal_id);
+            parent_node->children[pair.second + 1] = right->header.traversal_id;
+
+            to_split->keys.resize(to_split->header.key_count / 2);
+            to_split->children.resize(to_split->header.key_count / 2);
+            to_split->header.key_count /= 2;
+
+            this->btree_page_mgr->save_header(this->header);
+            this->btree_page_mgr->save_node(to_split->header.traversal_id, *to_split, this->table_option);
+            this->btree_page_mgr->save_node(right->header.traversal_id, *right, this->table_option);
+
+            if (parent_node->is_full()) {
+                to_split = parent_node;
+                continue;
+            }
         }
+
+        break;
     }
 }
 
@@ -307,6 +373,17 @@ BTreeNode::BTreeNode() {
 
 bool BTreeNode::is_full() {
     return this->keys.size() >= this->header.degree * 2;
+}
+
+struct BtreeKey BTreeNode::key_copy(size_t index) {
+    struct BtreeKey key{
+            nullptr,
+            0
+    };
+    auto original = this->keys[index];
+    strncpy(key.data, original.data, this->header.key_field_len);
+    key._id = original._id;
+    return key;
 }
 
 BtreePageMgr::BtreePageMgr(const string &filename, bool trunc) : fstream(filename.data(),
@@ -363,8 +440,8 @@ bool BtreePageMgr::get_node(const long &n, btree_node &node, TableOption *option
         this->read(reinterpret_cast<char *>(&child), sizeof(long));
         node.children.push_back(child);
         struct BtreeKey key{
-                data{malloc(node.header.key_field_len)},
-                _id{0}
+                (char *) malloc(node.header.key_field_len),
+                0
         };
         this->read(reinterpret_cast<char *>(&key._id), sizeof(int));
         this->read(reinterpret_cast<char *>(&key.data), node.header.key_field_len * sizeof(char));

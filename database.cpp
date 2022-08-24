@@ -1,9 +1,15 @@
 #include "database.hpp"
 
 #include <exception>
+#include <filesystem>
+#include <iostream>
+#include <exception>
+
 #include "fmt/format.h"
 
-DataBase* db = new DataBase();
+namespace fs = std::filesystem;
+
+DataBase* db = NULL;
 
 void DataBase::init() {
     filesystem::path outputDir(DB_OUTPUT_DIR);
@@ -51,9 +57,9 @@ void DataBase::insert(const smatch& match) {
     while (getline(data_file, line)) {
         try {
             json line_json = json::parse(line);
-            this->current_table->insert_data(line);
+            this->current_table->insert_data(line_json);
         } catch (exception &e) {
-            cout << exception.what() << endl;
+            cout << e.what() << endl;
         }
     }
 }
