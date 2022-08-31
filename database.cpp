@@ -23,13 +23,13 @@ void DataBase::createTable(const smatch& match) {
     if (this->tables.find(name) != this->tables.end())
         throw runtime_error(fmt::format("Table {} is already defined.", name));
 
-    this->tables[name] = new Table(name, DEFAULT_FIELD);
+    this->tables[name] = new Table(name, DEFAULT_FIELD, this->default_degree);
 }
 void DataBase::useTable(const smatch& match) {
     string name = match[2].str();
 
     if (this->tables.find(name) == this->tables.end()) {
-        this->tables[name] = new Table(name);
+        this->tables[name] = new Table(name, this->default_degree);
     }
 
     this->current_table = this->tables[name];
@@ -66,7 +66,7 @@ void DataBase::deleteTable(const smatch& match) {
 json DataBase::get_btree_node_info(const string& table_name, const string& index_name, const long& n) {
     json holder;
 
-    if (this->tables.find(table_name) == this->tables.end()) {
+    if (this->tables.find(table_name) != this->tables.end()) {
         auto table = this->tables[table_name];
         auto btree = table->get_index(index_name);
         auto node = new BTreeNode();
@@ -134,6 +134,9 @@ void DataBase::insert(const smatch& match) {
     string line;
     while (getline(data_file, line)) {
         try {
+            if (line.starts_with("//")) {
+                continue;
+            }
             json line_json = json::parse(line);
             this->current_table->insert_data(line_json);
         } catch (exception &e) {

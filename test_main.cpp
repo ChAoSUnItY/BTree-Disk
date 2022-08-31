@@ -21,6 +21,7 @@ using namespace std;
 void test1() {
     db = new DataBase();
     db->init();
+    db->default_degree = 3;
 
     parseCommand(string("delete table test"));
     parseCommand(string("create table test"));
@@ -32,16 +33,19 @@ void test1() {
 
     json btree_node_json;
     btree_node_json = db->get_btree_node_info("test", "_id", 0);
+    cout << btree_node_json.dump(4) << endl;
     btree_node_json = db->get_btree_node_info("test", "_id", 1);
     btree_node_json = db->get_btree_node_info("test", "_id", 2);
 
-    btree_node_json = db->get_btree_node_info("test", "example_str", 0);
-    btree_node_json = db->get_btree_node_info("test", "example_str", 1);
-    btree_node_json = db->get_btree_node_info("test", "example_str", 2);
 
-    btree_node_json = db->get_btree_node_info("test", "example_id", 0);
-    btree_node_json = db->get_btree_node_info("test", "example_id", 1);
-    btree_node_json = db->get_btree_node_info("test", "example_id", 2);
+//    btree_node_json = db->get_btree_node_info("test", "example_str", 0);
+//    btree_node_json = db->get_btree_node_info("test", "example_str", 1);
+//    btree_node_json = db->get_btree_node_info("test", "example_str", 2);
+//
+//    btree_node_json = db->get_btree_node_info("test", "example_id", 0);
+//    btree_node_json = db->get_btree_node_info("test", "example_id", 1);
+//    btree_node_json = db->get_btree_node_info("test", "example_id", 2);
+
 
     delete db;
 }
@@ -49,6 +53,7 @@ void test1() {
 void test2() {
     db = new DataBase();
     db->init();
+    db->default_degree = 3;
 
     parseCommand(string("delete table test2"));
     parseCommand(string("create table test2"));

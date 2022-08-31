@@ -22,6 +22,8 @@ private:
     Table* current_table;
 
 public:
+    int default_degree{-1};
+
     void init();
 
     void createTable(const smatch& match);
